@@ -65,5 +65,10 @@
 	// allow container to be treated with no network isolation
 		"--network=host",
 		// give a nicer name to the container
-		"--name", "${localEnv:USER}_cdi_devcontainer"]
+		"--name", "${localEnv:USER}_cdi_devcontainer"
+	],
+
+	"mounts": [
+  		"source=/storage/data/projects/crmp/code/git/climatologies/final_climatologies_jan2023/,target=/data,type=bind,consistency=cached"
+]
   }
