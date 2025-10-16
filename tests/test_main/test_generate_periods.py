@@ -22,7 +22,7 @@ class TestGenerateClimatologicalPeriods:
             
             assert mock_period_class.call_count == 3
             mock_session.add_all.assert_called_once()
-            mock_session.commit.assert_called_once()
+            mock_session.flush.assert_called_once()  # We now flush instead of commit
 
     def test_period_dates(self, mock_session):
         """Test that periods have correct date ranges."""

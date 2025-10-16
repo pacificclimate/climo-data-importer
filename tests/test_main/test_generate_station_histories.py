@@ -27,7 +27,7 @@ class TestGenerateStationHistories:
             
             assert mock_history_class.call_count == len(joint_stations)
             assert mock_session.add.call_count == len(joint_stations)
-            mock_session.commit.assert_called_once()
+            # No commit assertion - we no longer commit in this function
 
     def test_history_record_attributes(self, mock_session):
         """Test that history records have correct attributes."""

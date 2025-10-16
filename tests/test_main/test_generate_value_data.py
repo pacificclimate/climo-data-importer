@@ -39,7 +39,7 @@ class TestGenerateValueData:
                 
                 assert mock_value_class.call_count == 3
                 assert mock_session.add.call_count == 3
-                mock_session.commit.assert_called_once()
+                # No commit assertion - we no longer commit in this function
 
     def test_value_record_attributes(self, mock_session, sample_station_data_dicts):
         """Test that value records have correct attributes."""

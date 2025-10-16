@@ -162,12 +162,12 @@ def generate_climatological_periods(session: Session) -> None:
     ]
     
     session.add_all(periods)
-    session.commit()
+    session.flush()  # Flush to ensure IDs are available for foreign keys
     
     logger.info(f"Successfully created {len(periods)} climatological periods")
 
 def generate_climatological_variables(session: Session) -> None:
-    """ Generate the climatological variables in the database. """
+    """ Generate the climatological variables in database. """
     logger.info("Creating climatological variables in database...")
     
     variables = [
@@ -201,7 +201,7 @@ def generate_climatological_variables(session: Session) -> None:
     ]
     
     session.add_all(variables)
-    session.commit()
+    session.flush()  # Flush to ensure IDs are available for foreign keys
     
     logger.info(f"Successfully created {len(variables)} climatological variables: {[v.net_var_name for v in variables]}")
 
@@ -215,7 +215,7 @@ def generate_station(session: Session, history_line: HistoryLine, climo_period_i
         climo_period_id=climo_period_id
     )
     session.add(station)
-    session.commit()
+    session.flush()  # Flush to get the ID without committing
 
     logger.debug(f"Created climatological station with ID {station.id} for history_id {history_line.history_id}")
     return station
@@ -229,7 +229,6 @@ def generate_base_station_history(session: Session, station_id: int, history_id:
         role="base"  # Composite stations reference their base history
     )
     session.add(base_station)
-    session.commit()
 
 def generate_station_histories(session: Session, station_id: int, joint_stations: List[int | None]):
     joint_count = 0
@@ -247,7 +246,6 @@ def generate_station_histories(session: Session, station_id: int, joint_stations
         session.add(joint_station)
         joint_count += 1
     
-    session.commit()
     if joint_count > 0:
         logger.debug(f"Created {joint_count} joint station history links for station_id {station_id}")
 
@@ -296,7 +294,6 @@ def generate_value_data(session: Session, variable: str, period: str, station_id
         session.add(value)
         values_added += 1
     
-    session.commit()
     logger.debug(f"Successfully added {values_added} climatological values for station_id {station_id} ({variable}, {period})")
 
 
@@ -370,8 +367,9 @@ def generate_climatological_stations(session: Session, variable: str) -> None:
                 f"{stations_1991} stations (1991-2020), {total_processed} total history lines processed")
 
 def main(session: Optional[Session] = None) -> None:
-    # Use provided session/engine or fall back to module-level defaults
-    sess = session if session is not None else session
+    # Use provided session - it must be provided
+    if session is None:
+        raise ValueError("A database session must be provided")
     
     logger.info("=" * 60)
     logger.info("Starting climatological data import process")
@@ -379,8 +377,8 @@ def main(session: Optional[Session] = None) -> None:
     
     # generate periods and variables
     logger.info("Phase 1/2: Setting up database structure...")
-    generate_climatological_periods(sess)
-    generate_climatological_variables(sess)
+    generate_climatological_periods(session)
+    generate_climatological_variables(session)
     logger.info("Phase 1/2: Database structure setup completed")
 
     # generate stations and data for each variable
@@ -390,11 +388,16 @@ def main(session: Optional[Session] = None) -> None:
     for idx, variable in enumerate(variables, 1):
         logger.info(f"Processing variable {idx}/{len(variables)}: '{variable}'")
         try:
-            generate_climatological_stations(sess, variable)
+            generate_climatological_stations(session, variable)
             logger.info(f"Successfully completed processing for variable '{variable}'")
         except Exception as e:
             logger.error(f"Failed to process variable '{variable}': {e}")
             raise
+    
+    # Commit all changes in one transaction
+    logger.info("Committing all changes to database...")
+    session.commit()
+    logger.info("All changes committed successfully")
     
     logger.info("=" * 60)
     logger.info("Climatological data import process completed successfully")

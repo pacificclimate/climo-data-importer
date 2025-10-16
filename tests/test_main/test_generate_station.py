@@ -35,7 +35,7 @@ class TestGenerateStation:
                 climo_period_id=1
             )
             mock_session.add.assert_called_once()
-            mock_session.commit.assert_called_once()
+            mock_session.flush.assert_called_once()  # We now flush instead of commit
             assert result == mock_station
 
     def test_station_type_is_composite(self, mock_session, sample_history_dict_complete):

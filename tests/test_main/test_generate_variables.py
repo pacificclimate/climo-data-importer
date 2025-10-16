@@ -22,7 +22,7 @@ class TestGenerateClimatologicalVariables:
             
             assert mock_var_class.call_count == 3
             mock_session.add_all.assert_called_once()
-            mock_session.commit.assert_called_once()
+            mock_session.flush.assert_called_once()  # We now flush instead of commit
 
     @pytest.mark.parametrize("standard_name,display_name,unit,duration,short_name,cell_methods,net_var_name", [
         ("ppt", "Precipitation", "mm", "monthly", "ppt", "time: sum", "ppt"),
