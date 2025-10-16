@@ -1,4 +1,5 @@
 import csv
+import logging
 import os
 from pycds import ClimatologicalPeriod, ClimatologicalStation, ClimatologicalStationXHistory, ClimatologicalValue, ClimatologicalVariable # type: ignore
 import sqlalchemy as sa
@@ -9,8 +10,14 @@ from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.engine import Engine
 
-engine = sa.create_engine("sqlite:///data/stations.db", echo=False)
-session = Session(engine)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
 
 
 # csv file targets, configurable via environment variable
@@ -89,24 +96,50 @@ def read_station_info_file(variable: str) -> List[HistoryLine]:
     and return a list of HistoryLine objects.
     """
     station_file = station_info_template.format(variable)
+    logger.info(f"Reading station info file for variable '{variable}': {station_file}")
+    
     stations: List[HistoryLine] = []
-    with open(station_file, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            stations.append(HistoryLine(row))
-    return stations
+    try:
+        with open(station_file, 'r') as f:
+            reader = csv.DictReader(f)
+            row_count = 0
+            for row in reader:
+                stations.append(HistoryLine(row))
+                row_count += 1
+        
+        logger.info(f"Successfully read {row_count} station records for variable '{variable}'")
+        return stations
+    except FileNotFoundError:
+        logger.error(f"Station info file not found: {station_file}")
+        raise
+    except Exception as e:
+        logger.error(f"Error reading station info file {station_file}: {e}")
+        raise
 
 def read_data_file(variable: str, climatology_period: str, station_id: str) -> List[StationDataLine]:
     """ Read the data file for a given variable (ppt, tmax, tmin), climatology period (1971_2000, 1981_2010, 1991_2020)
     and return a list of StationDataLine objects.
     """
     data_file = data_location_template.format(variable, climatology_period, station_id)
+    logger.debug(f"Reading data file for station {station_id}, variable '{variable}', period '{climatology_period}': {data_file}")
+    
     data: List[StationDataLine] = []
-    with open(data_file, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            data.append(StationDataLine(row))
-    return data
+    try:
+        with open(data_file, 'r') as f:
+            reader = csv.DictReader(f)
+            row_count = 0
+            for row in reader:
+                data.append(StationDataLine(row))
+                row_count += 1
+        
+        logger.debug(f"Successfully read {row_count} data points for station {station_id} ({variable}, {climatology_period})")
+        return data
+    except FileNotFoundError:
+        logger.warning(f"Data file not found: {data_file} (station {station_id}, {variable}, {climatology_period})")
+        raise
+    except Exception as e:
+        logger.error(f"Error reading data file {data_file}: {e}")
+        raise
 
 # Now we can start filling in the database
 
@@ -120,16 +153,23 @@ def read_data_file(variable: str, climatology_period: str, station_id: str) -> L
 
 def generate_climatological_periods(session: Session) -> None:
     """ Generate the climatological periods in the database. """
+    logger.info("Creating climatological periods in database...")
+    
     periods = [
         ClimatologicalPeriod(start_date="1971-01-01", end_date="2000-12-31"),
         ClimatologicalPeriod(start_date="1981-01-01", end_date="2010-12-31"),
         ClimatologicalPeriod(start_date="1991-01-01", end_date="2020-12-31"),
     ]
+    
     session.add_all(periods)
     session.commit()
+    
+    logger.info(f"Successfully created {len(periods)} climatological periods")
 
 def generate_climatological_variables(session: Session) -> None:
     """ Generate the climatological variables in the database. """
+    logger.info("Creating climatological variables in database...")
+    
     variables = [
         ClimatologicalVariable(
             duration="monthly",
@@ -159,10 +199,15 @@ def generate_climatological_variables(session: Session) -> None:
             net_var_name="tmin"
         ),
     ]
+    
     session.add_all(variables)
     session.commit()
+    
+    logger.info(f"Successfully created {len(variables)} climatological variables: {[v.net_var_name for v in variables]}")
 
 def generate_station(session: Session, history_line: HistoryLine, climo_period_id: int):
+    logger.debug(f"Creating climatological station for history_id {history_line.history_id}, period_id {climo_period_id}")
+    
     station = ClimatologicalStation(
         type="composite", # One of long-record, composite, prism 
         basin_id=history_line.basin,
@@ -172,9 +217,12 @@ def generate_station(session: Session, history_line: HistoryLine, climo_period_i
     session.add(station)
     session.commit()
 
+    logger.debug(f"Created climatological station with ID {station.id} for history_id {history_line.history_id}")
     return station
 
 def generate_base_station_history(session: Session, station_id: int, history_id: int):
+    logger.debug(f"Creating base station history link: station_id {station_id} -> history_id {history_id}")
+    
     base_station = ClimatologicalStationXHistory(
         climo_station_id=station_id,
         history_id=history_id,
@@ -184,20 +232,24 @@ def generate_base_station_history(session: Session, station_id: int, history_id:
     session.commit()
 
 def generate_station_histories(session: Session, station_id: int, joint_stations: List[int | None]):
-    
+    joint_count = 0
     for joint_id in joint_stations:
         # Skip None values - some joint_stations columns may be empty
         if joint_id is None:
             continue
             
+        logger.debug(f"Creating joint station history link: station_id {station_id} -> joint_history_id {joint_id}")
         joint_station = ClimatologicalStationXHistory(
             climo_station_id=station_id,
             history_id=joint_id,
             role="joint"  # Composite stations reference joint stations
         )
         session.add(joint_station)
+        joint_count += 1
     
     session.commit()
+    if joint_count > 0:
+        logger.debug(f"Created {joint_count} joint station history links for station_id {station_id}")
 
 def generate_value_data(session: Session, variable: str, period: str, station_id: int, history_id: str, monthlyyears: list[int | None]):
     """Generate climatological value data for a station from CSV files.
@@ -210,17 +262,26 @@ def generate_value_data(session: Session, variable: str, period: str, station_id
         history_id: History ID for reading the data file
         monthlyyears: List of 12 values indicating contributing years for each month
     """
+    logger.debug(f"Processing value data for station_id {station_id}, variable '{variable}', period '{period}', history_id {history_id}")
+    
     # Get the variable ID
     climo_var = session.query(ClimatologicalVariable).filter_by(
         net_var_name=variable
     ).first()
     if climo_var is None:
+        logger.error(f"Variable {variable} not found in database")
         raise ValueError(f"Variable {variable} not found")
     
     # Read data lines from CSV (should be 12 monthly values)
-    data_lines = read_data_file(variable, period, history_id)
+    try:
+        data_lines = read_data_file(variable, period, history_id)
+        logger.debug(f"Read {len(data_lines)} data lines for station {history_id}")
+    except Exception as e:
+        logger.error(f"Failed to read data file for station {history_id}, variable {variable}, period {period}: {e}")
+        raise
     
     # Each data line corresponds to a month, match with monthlyyears
+    values_added = 0
     for idx, data_line in enumerate(data_lines):
         # Get the number of contributing years for this month
         num_years = monthlyyears[idx] if idx < len(monthlyyears) and monthlyyears[idx] is not None else 0
@@ -233,7 +294,10 @@ def generate_value_data(session: Session, variable: str, period: str, station_id
             num_contributing_years=num_years
         )
         session.add(value)
+        values_added += 1
+    
     session.commit()
+    logger.debug(f"Successfully added {values_added} climatological values for station_id {station_id} ({variable}, {period})")
 
 
 def get_period_id_by_dates(session: Session, start_date: str, end_date: str):
@@ -248,40 +312,106 @@ def get_period_id_by_dates(session: Session, start_date: str, end_date: str):
 
 def generate_climatological_stations(session: Session, variable: str) -> None:
     """ Generate the climatological stations in the database for a given variable. """
+    logger.info(f"Starting climatological station generation for variable '{variable}'")
+    
     # Get period IDs
     period_1971_id = get_period_id_by_dates(session, "1971-01-01", "2000-12-31")
     period_1981_id = get_period_id_by_dates(session, "1981-01-01", "2010-12-31")
     period_1991_id = get_period_id_by_dates(session, "1991-01-01", "2020-12-31")
     
+    logger.info(f"Period IDs: 1971-2000={period_1971_id}, 1981-2010={period_1981_id}, 1991-2020={period_1991_id}")
+    
     history_lines = read_station_info_file(variable)
-    for line in history_lines:
+    
+    # Track statistics
+    stations_1971 = 0
+    stations_1981 = 0
+    stations_1991 = 0
+    total_processed = 0
+    
+    logger.info(f"Processing {len(history_lines)} history lines for variable '{variable}'")
+    
+    for idx, line in enumerate(history_lines, 1):
+        logger.debug(f"Processing history line {idx}/{len(history_lines)}: history_id {line.history_id}")
+        
         # create a station for each period we have data for
         if line.has_1971_data:
+            logger.debug(f"Creating 1971-2000 station for history_id {line.history_id}")
             station = generate_station(session, line, period_1971_id)
             generate_base_station_history(session, station.id, line.history_id)
             generate_station_histories(session, station.id, line.joint_stations_1971)
             generate_value_data(session, variable, "1971_2000", station.id, str(line.history_id), line.monthlyyears_1971)
+            stations_1971 += 1
 
         if line.has_1981_data:
+            logger.debug(f"Creating 1981-2010 station for history_id {line.history_id}")
             station = generate_station(session, line, period_1981_id)
             generate_base_station_history(session, station.id, line.history_id)
             generate_station_histories(session, station.id, line.joint_stations_1981)
             generate_value_data(session, variable, "1981_2010", station.id, str(line.history_id), line.monthlyyears_1981)
+            stations_1981 += 1
         
         if line.has_1991_data:
+            logger.debug(f"Creating 1991-2020 station for history_id {line.history_id}")
             station = generate_station(session, line, period_1991_id)
             generate_base_station_history(session, station.id, line.history_id)
             generate_station_histories(session, station.id, line.joint_stations_1991)
             generate_value_data(session, variable, "1991_2020", station.id, str(line.history_id), line.monthlyyears_1991)
+            stations_1991 += 1
+            
+        total_processed += 1
+        
+        # Log progress every 10 stations
+        if idx % 10 == 0:
+            logger.info(f"Processed {idx}/{len(history_lines)} history lines for variable '{variable}'")
+    
+    logger.info(f"Completed climatological station generation for variable '{variable}': "
+                f"{stations_1971} stations (1971-2000), {stations_1981} stations (1981-2010), "
+                f"{stations_1991} stations (1991-2020), {total_processed} total history lines processed")
 
-def main(custom_session: Optional[Session] = None, custom_engine: Optional[Engine] = None) -> None:
+def main(session: Optional[Session] = None) -> None:
     # Use provided session/engine or fall back to module-level defaults
-    sess = custom_session if custom_session is not None else session
+    sess = session if session is not None else session
+    
+    logger.info("=" * 60)
+    logger.info("Starting climatological data import process")
+    logger.info("=" * 60)
     
     # generate periods and variables
+    logger.info("Phase 1/2: Setting up database structure...")
     generate_climatological_periods(sess)
     generate_climatological_variables(sess)
+    logger.info("Phase 1/2: Database structure setup completed")
 
     # generate stations and data for each variable
-    for variable in [ppt_fill, tmax_fill, tmin_fill]:
-        generate_climatological_stations(sess, variable)
+    variables = [ppt_fill, tmax_fill, tmin_fill]
+    logger.info(f"Phase 2/2: Processing data for {len(variables)} variables: {variables}")
+    
+    for idx, variable in enumerate(variables, 1):
+        logger.info(f"Processing variable {idx}/{len(variables)}: '{variable}'")
+        try:
+            generate_climatological_stations(sess, variable)
+            logger.info(f"Successfully completed processing for variable '{variable}'")
+        except Exception as e:
+            logger.error(f"Failed to process variable '{variable}': {e}")
+            raise
+    
+    logger.info("=" * 60)
+    logger.info("Climatological data import process completed successfully")
+    logger.info("=" * 60)
+
+if __name__ == "__main__":
+    logger.info("Initializing database connection...")
+    engine = sa.create_engine("postgresql://crmp@dbtest04.pcic.uvic.ca/crmp", echo=False)
+    session = Session(engine)
+    logger.info("Database connection established")
+    
+    try:
+        main(session=session)
+    except Exception as e:
+        logger.error(f"Import process failed: {e}")
+        raise
+    finally:
+        logger.info("Closing database session...")
+        session.close()
+        logger.info("Database session closed")
