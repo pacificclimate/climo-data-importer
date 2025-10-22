@@ -28,6 +28,12 @@ ppt_fill = "ppt"
 tmax_fill = "tmax"
 tmin_fill = "tmin"
 
+var_map = {
+    ppt_fill: "Precip_Climatology",
+    tmax_fill: "Tx_Climatology",
+    tmin_fill: "Tn_Climatology"
+}
+
 # station info files
 # {0} = variable (ppt, tmax, tmin)
 station_info_template = f"{composite_station_info_dir}{{0}}_composite_station_file.csv"
@@ -174,29 +180,41 @@ def generate_climatological_variables(session: Session) -> None:
         ClimatologicalVariable(
             duration="monthly",
             unit="mm",
-            standard_name="ppt",
-            display_name="Precipitation",
-            short_name="ppt",
-            cell_methods="time: sum",
-            net_var_name="ppt"
+            standard_name="lwe_thickness_of_precipitation_amount",
+            display_name="Precipitation Climatology",
+            short_name="lwe_thickness_of_precipitation_amount t: sum within months t: mean over years",
+            cell_methods="t: sum within months t: mean over years",
+            net_var_name="Precip_Climatology"
         ),
         ClimatologicalVariable(
             duration="monthly",
-            unit="degC",
-            standard_name="tmax",
-            display_name="Maximum Temperature",
-            short_name="tmax",
-            cell_methods="time: maximum",
-            net_var_name="tmax"
+            unit="celsius",
+            standard_name="air_temperature",
+            display_name="Temperature Climatology (Max.)",
+            short_name="air_temperature t: maximum within days t: mean within months t: mean over years",
+            cell_methods="t: maximum within days t: mean within months t: mean over years",
+            net_var_name="Tx_Climatology"
         ),
         ClimatologicalVariable(
             duration="monthly",
-            unit="degC",
-            standard_name="tmin",
-            display_name="Minimum Temperature",
-            short_name="tmin",
-            cell_methods="time: minimum",
-            net_var_name="tmin"
+            unit="celsius",
+            standard_name="air_temperature",
+            display_name="Temperature Climatology (Min.)",
+            short_name="air_temperature t: minimum within days t: mean within months t: mean over years",
+            cell_methods="t: minimum within days t: mean within months t: mean over years",
+            net_var_name="Tn_Climatology"
+        ),
+
+        # This isn't used for our imported data, but exists as part of the existing PCIC climatology
+        # values in obs_raw. Create it so it makes our lives easier later.
+        ClimatologicalVariable(
+            duration="monthly",
+            unit="celsius",
+            standard_name="air_temperature",
+            display_name="Temperature Climatology (Mean)",
+            short_name="air_temperature t: mean within days t: mean within months t: mean over years",
+            cell_methods="t: mean within days t: mean within months t: mean over years",
+            net_var_name="T_mean_Climatology"
         ),
     ]
     
@@ -205,11 +223,35 @@ def generate_climatological_variables(session: Session) -> None:
     
     logger.info(f"Successfully created {len(variables)} climatological variables: {[v.net_var_name for v in variables]}")
 
+def get_joint_stations_for_period(session: Session, history_line: HistoryLine, climo_period_id: int):
+    """Get the appropriate joint stations list for the given climatological period."""
+    # Get the period dates to determine which joint stations to use
+    period = session.query(ClimatologicalPeriod).filter_by(id=climo_period_id).first()
+    if period is None:
+        raise ValueError(f"Period ID {climo_period_id} not found")
+    
+    # Map period dates to the appropriate joint stations list
+    start_date_str = str(period.start_date)
+    end_date_str = str(period.end_date)
+    
+    if start_date_str == "1971-01-01" and end_date_str == "2000-12-31":
+        return history_line.joint_stations_1971
+    elif start_date_str == "1981-01-01" and end_date_str == "2010-12-31":
+        return history_line.joint_stations_1981
+    elif start_date_str == "1991-01-01" and end_date_str == "2020-12-31":
+        return history_line.joint_stations_1991
+    else:
+        raise ValueError(f"Unknown period: {start_date_str} to {end_date_str}")
+
 def generate_station(session: Session, history_line: HistoryLine, climo_period_id: int):
     logger.debug(f"Creating climatological station for history_id {history_line.history_id}, period_id {climo_period_id}")
     
+    # Get the joint stations for this specific period
+    joint_stations = get_joint_stations_for_period(session, history_line, climo_period_id)
+    
+    # Composite if we use any joint stations for this specific period
     station = ClimatologicalStation(
-        type="composite", # One of long-record, composite, prism 
+        type= "composite" if any(joint_stations) else "long-record", 
         basin_id=history_line.basin,
         comments="",
         climo_period_id=climo_period_id
@@ -264,7 +306,7 @@ def generate_value_data(session: Session, variable: str, period: str, station_id
     
     # Get the variable ID
     climo_var = session.query(ClimatologicalVariable).filter_by(
-        net_var_name=variable
+        net_var_name=var_map[variable]
     ).first()
     if climo_var is None:
         logger.error(f"Variable {variable} not found in database")
@@ -357,9 +399,9 @@ def generate_climatological_stations(session: Session, variable: str) -> None:
             stations_1991 += 1
             
         total_processed += 1
-        
-        # Log progress every 10 stations
-        if idx % 10 == 0:
+
+        # Log progress every 100 stations
+        if idx % 100 == 0:
             logger.info(f"Processed {idx}/{len(history_lines)} history lines for variable '{variable}'")
     
     logger.info(f"Completed climatological station generation for variable '{variable}': "
@@ -395,7 +437,6 @@ def main(session: Optional[Session] = None) -> None:
             raise
     
     # Commit all changes in one transaction
-    logger.info("Committing all changes to database...")
     session.commit()
     logger.info("All changes committed successfully")
     
@@ -415,6 +456,5 @@ if __name__ == "__main__":
         logger.error(f"Import process failed: {e}")
         raise
     finally:
-        logger.info("Closing database session...")
         session.close()
         logger.info("Database session closed")

@@ -35,9 +35,21 @@ class TestIntegrationWithMocks:
             else:
                 return mock_open(read_data=data_csv)()
         
-        # Mock period query
-        mock_period = MagicMock()
-        mock_period.id = 1
+        # Mock periods for different period IDs
+        mock_period_1971 = MagicMock()
+        mock_period_1971.id = 1
+        mock_period_1971.start_date = "1971-01-01"
+        mock_period_1971.end_date = "2000-12-31"
+        
+        mock_period_1981 = MagicMock()
+        mock_period_1981.id = 2
+        mock_period_1981.start_date = "1981-01-01"
+        mock_period_1981.end_date = "2010-12-31"
+        
+        mock_period_1991 = MagicMock()
+        mock_period_1991.id = 3
+        mock_period_1991.start_date = "1991-01-01"
+        mock_period_1991.end_date = "2020-12-31"
         
         # Mock variable query
         mock_var = MagicMock()
@@ -47,7 +59,27 @@ class TestIntegrationWithMocks:
         def query_side_effect(model):
             mock_query = MagicMock()
             if 'Period' in str(model):
-                mock_query.filter_by.return_value.first.return_value = mock_period
+                # Return different periods based on filter_by call
+                def filter_by_side_effect(**kwargs):
+                    mock_filter = MagicMock()
+                    if 'id' in kwargs:
+                        if kwargs['id'] == 1:
+                            mock_filter.first.return_value = mock_period_1971
+                        elif kwargs['id'] == 2:
+                            mock_filter.first.return_value = mock_period_1981
+                        elif kwargs['id'] == 3:
+                            mock_filter.first.return_value = mock_period_1991
+                    else:
+                        # For get_period_id_by_dates calls
+                        start_date = kwargs.get('start_date')
+                        if start_date == "1971-01-01":
+                            mock_filter.first.return_value = mock_period_1971
+                        elif start_date == "1981-01-01":
+                            mock_filter.first.return_value = mock_period_1981
+                        elif start_date == "1991-01-01":
+                            mock_filter.first.return_value = mock_period_1991
+                    return mock_filter
+                mock_query.filter_by.side_effect = filter_by_side_effect
             else:  # Variable
                 mock_query.filter_by.return_value.first.return_value = mock_var
             return mock_query

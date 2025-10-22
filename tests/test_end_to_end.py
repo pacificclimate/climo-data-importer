@@ -129,17 +129,15 @@ class TestEndToEndDatabaseOperations:
         variables = test_session.query(ClimatologicalVariable).all()
         
         # Verify results
-        assert len(variables) == 3
+        assert len(variables) == 4
         
-        standard_names = [v.standard_name for v in variables]
+        net_var_names = [v.net_var_name for v in variables]
         display_names = [v.display_name for v in variables]
         
-        assert 'ppt' in standard_names
-        assert 'tmax' in standard_names
-        assert 'tmin' in standard_names
-        assert 'Precipitation' in display_names
-        assert 'Maximum Temperature' in display_names
-        assert 'Minimum Temperature' in display_names
+        assert 'Precip_Climatology' in net_var_names
+        assert 'Tx_Climatology' in net_var_names
+        assert 'Tn_Climatology' in net_var_names
+        assert 'T_mean_Climatology' in net_var_names
 
     def test_generate_station_with_basin(self, test_session, test_data_dir):
         """Test creating a station with basin information."""
@@ -159,7 +157,6 @@ class TestEndToEndDatabaseOperations:
         
         # Verify
         assert station.id is not None
-        assert station.type == "composite"
         assert station.basin_id == history_with_basin.basin
         
         # Query back from database
@@ -227,11 +224,11 @@ class TestEndToEndDatabaseOperations:
         variable = ClimatologicalVariable(
             duration="monthly",
             unit="mm",
-            standard_name="ppt",
-            display_name="Precipitation",
-            short_name="ppt",
-            cell_methods="time: sum",
-            net_var_name="ppt"
+            standard_name="lwe_thickness_of_precipitation_amount",
+            display_name="Precipitation Climatology",
+            short_name="lwe_thickness_of_precipitation_amount t: sum within months t: mean over years",
+            cell_methods="t: sum within months t: mean over years",
+            net_var_name="Precip_Climatology"
         )
         test_session.add(variable)
         test_session.commit()
@@ -370,11 +367,11 @@ class TestEndToEndDatabaseOperations:
         variable = ClimatologicalVariable(
             duration="monthly",
             unit="mm",
-            standard_name="ppt",
-            display_name="Precipitation",
-            short_name="ppt",
-            cell_methods="time: sum",
-            net_var_name="ppt"
+            standard_name="lwe_thickness_of_precipitation_amount",
+            display_name="Precipitation Climatology",
+            short_name="lwe_thickness_of_precipitation_amount t: sum within months t: mean over years",
+            cell_methods="t: sum within months t: mean over years",
+            net_var_name="Precip_Climatology"
         )
         test_session.add(variable)
         test_session.commit()

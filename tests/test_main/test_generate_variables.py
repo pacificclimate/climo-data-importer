@@ -15,19 +15,20 @@ from main import generate_climatological_variables
 class TestGenerateClimatologicalVariables:
     """Test cases for generate_climatological_variables function."""
 
-    def test_generates_three_variables(self, mock_session):
-        """Test that three climatological variables are generated."""
+    def test_generates_four_variables(self, mock_session):
+        """Test that four climatological variables are generated."""
         with patch('main.ClimatologicalVariable') as mock_var_class:
             generate_climatological_variables(mock_session)
             
-            assert mock_var_class.call_count == 3
+            assert mock_var_class.call_count == 4
             mock_session.add_all.assert_called_once()
             mock_session.flush.assert_called_once()  # We now flush instead of commit
 
+
     @pytest.mark.parametrize("standard_name,display_name,unit,duration,short_name,cell_methods,net_var_name", [
-        ("ppt", "Precipitation", "mm", "monthly", "ppt", "time: sum", "ppt"),
-        ("tmax", "Maximum Temperature", "degC", "monthly", "tmax", "time: maximum", "tmax"),
-        ("tmin", "Minimum Temperature", "degC", "monthly", "tmin", "time: minimum", "tmin"),
+        ("lwe_thickness_of_precipitation_amount", "Precipitation Climatology", "mm", "monthly", "lwe_thickness_of_precipitation_amount t: sum within months t: mean over years", "t: sum within months t: mean over years", "Precip_Climatology"),
+        ("air_temperature", "Temperature Climatology (Max.)", "celsius", "monthly", "air_temperature t: maximum within days t: mean within months t: mean over years", "t: maximum within days t: mean within months t: mean over years", "Tx_Climatology"),
+        ("air_temperature", "Temperature Climatology (Min.)", "celsius", "monthly", "air_temperature t: minimum within days t: mean within months t: mean over years", "t: minimum within days t: mean within months t: mean over years", "Tn_Climatology"),
     ])
     def test_variable_attributes(self, standard_name, display_name, unit, duration, short_name, cell_methods, net_var_name, mock_session):
         """Test that variables have correct attributes."""
