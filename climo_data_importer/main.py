@@ -1,6 +1,7 @@
 import csv
 import logging
 import os
+from datetime import date
 from pycds import ClimatologicalPeriod, ClimatologicalStation, ClimatologicalStationXHistory, ClimatologicalValue, ClimatologicalVariable # type: ignore
 import sqlalchemy as sa
 # start by reading files
@@ -231,19 +232,20 @@ def get_joint_stations_for_period(session: Session, history_line: HistoryLine, c
         raise ValueError(f"Period ID {climo_period_id} not found")
     
     # Map period dates to the appropriate joint stations list
-    start_date_str = str(period.start_date)
-    end_date_str = str(period.end_date)
+    # Convert to date objects for comparison (ignore time component)
+    start_date = period.start_date.date() if hasattr(period.start_date, 'date') else period.start_date
+    end_date = period.end_date.date() if hasattr(period.end_date, 'date') else period.end_date
     
-    if start_date_str == "1971-01-01" and end_date_str == "2000-12-31":
+    if start_date == date(1971, 1, 1) and end_date == date(2000, 12, 31): # type: ignore
         return history_line.joint_stations_1971
-    elif start_date_str == "1981-01-01" and end_date_str == "2010-12-31":
+    elif start_date == date(1981, 1, 1) and end_date == date(2010, 12, 31): # type: ignore
         return history_line.joint_stations_1981
-    elif start_date_str == "1991-01-01" and end_date_str == "2020-12-31":
+    elif start_date == date(1991, 1, 1) and end_date == date(2020, 12, 31): # type: ignore
         return history_line.joint_stations_1991
     else:
-        raise ValueError(f"Unknown period: {start_date_str} to {end_date_str}")
+        raise ValueError(f"Unknown period: {start_date} to {end_date}")
 
-def generate_station(session: Session, history_line: HistoryLine, climo_period_id: int):
+def generate_station(session: Session, history_line: HistoryLine, climo_period_id: int) -> ClimatologicalStation:
     logger.debug(f"Creating climatological station for history_id {history_line.history_id}, period_id {climo_period_id}")
     
     # Get the joint stations for this specific period
@@ -339,7 +341,7 @@ def generate_value_data(session: Session, variable: str, period: str, station_id
     logger.debug(f"Successfully added {values_added} climatological values for station_id {station_id} ({variable}, {period})")
 
 
-def get_period_id_by_dates(session: Session, start_date: str, end_date: str):
+def get_period_id_by_dates(session: Session, start_date: str, end_date: str) -> int:
     """Get the period ID for a given date range."""
     period = session.query(ClimatologicalPeriod).filter_by(
         start_date=start_date,
@@ -347,7 +349,7 @@ def get_period_id_by_dates(session: Session, start_date: str, end_date: str):
     ).first()
     if period is None:
         raise ValueError(f"Period {start_date} to {end_date} not found")
-    return period.id
+    return period.id  # type: ignore # SQLAlchemy instance attribute
 
 def generate_climatological_stations(session: Session, variable: str) -> None:
     """ Generate the climatological stations in the database for a given variable. """
@@ -377,25 +379,25 @@ def generate_climatological_stations(session: Session, variable: str) -> None:
         if line.has_1971_data:
             logger.debug(f"Creating 1971-2000 station for history_id {line.history_id}")
             station = generate_station(session, line, period_1971_id)
-            generate_base_station_history(session, station.id, line.history_id)
-            generate_station_histories(session, station.id, line.joint_stations_1971)
-            generate_value_data(session, variable, "1971_2000", station.id, str(line.history_id), line.monthlyyears_1971)
+            generate_base_station_history(session, station.id, line.history_id)  # type: ignore
+            generate_station_histories(session, station.id, line.joint_stations_1971)  # type: ignore
+            generate_value_data(session, variable, "1971_2000", station.id, str(line.history_id), line.monthlyyears_1971)  # type: ignore
             stations_1971 += 1
 
         if line.has_1981_data:
             logger.debug(f"Creating 1981-2010 station for history_id {line.history_id}")
             station = generate_station(session, line, period_1981_id)
-            generate_base_station_history(session, station.id, line.history_id)
-            generate_station_histories(session, station.id, line.joint_stations_1981)
-            generate_value_data(session, variable, "1981_2010", station.id, str(line.history_id), line.monthlyyears_1981)
+            generate_base_station_history(session, station.id, line.history_id)  # type: ignore
+            generate_station_histories(session, station.id, line.joint_stations_1981)  # type: ignore
+            generate_value_data(session, variable, "1981_2010", station.id, str(line.history_id), line.monthlyyears_1981)  # type: ignore
             stations_1981 += 1
         
         if line.has_1991_data:
             logger.debug(f"Creating 1991-2020 station for history_id {line.history_id}")
             station = generate_station(session, line, period_1991_id)
-            generate_base_station_history(session, station.id, line.history_id)
-            generate_station_histories(session, station.id, line.joint_stations_1991)
-            generate_value_data(session, variable, "1991_2020", station.id, str(line.history_id), line.monthlyyears_1991)
+            generate_base_station_history(session, station.id, line.history_id)  # type: ignore
+            generate_station_histories(session, station.id, line.joint_stations_1991)  # type: ignore
+            generate_value_data(session, variable, "1991_2020", station.id, str(line.history_id), line.monthlyyears_1991)  # type: ignore
             stations_1991 += 1
             
         total_processed += 1
@@ -446,7 +448,8 @@ def main(session: Optional[Session] = None) -> None:
 
 if __name__ == "__main__":
     logger.info("Initializing database connection...")
-    engine = sa.create_engine("postgresql://crmp@dbtest04.pcic.uvic.ca/crmp", echo=False)
+    connection_string = os.getenv("DATABASE_URL", "postgresql+psycopg2://crmp@/crmp?host=pg01.pcic.uvic.ca,pg02.pcic.uvic.ca&port=5432,5432&target_session_attrs=read-write&connect_timeout=5")
+    engine = sa.create_engine(connection_string, echo=False)
     session = Session(engine)
     logger.info("Database connection established")
     
