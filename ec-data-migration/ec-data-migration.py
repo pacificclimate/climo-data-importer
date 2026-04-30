@@ -1,6 +1,9 @@
-crmp_url = "postgresql+psycopg2://crmp@/crmp?host=pg01.pcic.uvic.ca,pg02.pcic.uvic.ca&port=5432,5432&target_session_attrs=read-write&passfile=/workspaces/climo-data-importer/.pgpass"
+# crmp_url = "postgresql+psycopg2://crmp@/crmp?host=pg01.pcic.uvic.ca,pg02.pcic.uvic.ca&port=5432,5432&target_session_attrs=read-write&passfile=/workspaces/climo-data-importer/.pgpass"
 # NOTE: metnorth_ro is read-only; update to a write-capable user before running the migration
-metnorth_url = "postgresql+psycopg2://metnorth@/metnorth?host=pg01.pcic.uvic.ca,pg02.pcic.uvic.ca&port=5432,5432&target_session_attrs=read-write&passfile=/workspaces/climo-data-importer/.pgpass"
+# metnorth_url = "postgresql+psycopg2://metnorth@/metnorth?host=pg01.pcic.uvic.ca,pg02.pcic.uvic.ca&port=5432,5432&target_session_attrs=read-write&passfile=/workspaces/climo-data-importer/.pgpass"
+
+crmp_url = "postgresql://crmp@db.pcic.uvic.ca/crmp?keepalives=1&keepalives_idle=300&keepalives_interval=300&keepalives_count=9&passfile=/workspaces/climo-data-importer/.pgpass"
+metnorth_url = "postgresql://metnorth@db.pcic.uvic.ca:5433/metnorth?keepalives=1&keepalives_idle=300&keepalives_interval=300&keepalives_count=9&passfile=/workspaces/climo-data-importer/.pgpass"
 
 import logging
 import io
